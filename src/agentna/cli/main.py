@@ -5,6 +5,7 @@ from typing import Annotated, Optional
 
 import typer
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 
@@ -341,7 +342,8 @@ def ask(
                 # Use more tokens for detailed answers
                 answer = router.complete_sync(prompt, system=SYSTEM_PROMPT, max_tokens=2500)
                 console.print("[green]Answer:[/green]\n")
-                console.print(answer)
+                # Render as Markdown for proper formatting
+                console.print(Markdown(answer))
                 return
         except Exception as e:
             # Fallback: just show search results

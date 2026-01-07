@@ -49,49 +49,37 @@ Please provide:
 
 Be specific about which files and functions might be affected."""
 
-ASK_CODEBASE_PROMPT = """Answer the following question about the codebase based ONLY on the code provided.
+ASK_CODEBASE_PROMPT = """Answer based ONLY on the code provided below.
 
-## Question
-{question}
+Question: {question}
 
-## Code Context (SOURCE OF TRUTH)
+## Code Context
 {context}
 
-## Symbols Found
+## Symbols
 {symbols}
 
-## Code Relationships (imports, calls, inheritance)
+## Relationships
 {relationships}
 
-## Instructions
+---
 
-Analyze the code thoroughly and provide a structured answer:
+Provide a clear answer with:
 
-1. **Overview** - Brief summary of how this feature/concept works (2-3 sentences)
+1. **Summary** (2-3 sentences explaining how it works)
 
-2. **Code Flow** - Trace the execution path step by step:
-   - Entry points (views, CLI, API endpoints)
-   - Service layer logic
-   - Data layer (models, repositories)
+2. **Main Files**
+   - List the key files with their purpose
 
-3. **Key Files** - List the most important files in a table:
-   | File | Purpose |
-   |------|---------|
-   | path/to/file.py | What it does |
+3. **How It Works**
+   - Step by step explanation
+   - Include function names and file:line references
+   - Mention important business rules
 
-4. **Implementation Details** - Explain the core logic with specific references:
-   - Method names with file:line references
-   - Important conditionals or business rules
-   - Data transformations
+4. **Example Flow** (if applicable)
+   - Show a typical execution path
 
-5. **Related Components** - What else interacts with this code
-
-IMPORTANT:
-- Base your answer ONLY on the code provided, not assumptions
-- If the code context is incomplete, say what's missing
-- Prefer showing actual method names and signatures over generic descriptions
-- Use markdown tables for structured data
-- If there are multiple approaches in the code, explain the PRIMARY one first"""
+Be specific. Use the actual code shown above. If info is missing, say so."""
 
 SUMMARIZE_FILE_PROMPT = """Summarize the following code file.
 
