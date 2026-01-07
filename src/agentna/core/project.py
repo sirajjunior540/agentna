@@ -95,6 +95,11 @@ class Project:
         return self.memory_dir / CONVENTIONS_FILE
 
     @property
+    def summaries_path(self) -> Path:
+        """Path to pre-computed symbol summaries."""
+        return self.memory_dir / "summaries.json"
+
+    @property
     def history_dir(self) -> Path:
         """Path to change history directory."""
         return self.agentna_dir / HISTORY_DIR

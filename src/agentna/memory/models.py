@@ -177,3 +177,40 @@ class SearchResult(BaseModel):
     score: float = Field(..., description="Similarity score")
     highlights: list[str] = Field(default_factory=list, description="Highlighted matches")
     related_chunks: list[str] = Field(default_factory=list, description="Related chunk IDs")
+
+
+class SymbolSummary(BaseModel):
+    """Pre-computed summary and context for a code symbol.
+
+    Generated at sync time to provide instant recall without re-analysis.
+    This is the core of AgentNA's memory - understand once, remember forever.
+    """
+
+    id: str = Field(..., description="Symbol ID (matches CodeChunk.id)")
+    symbol_name: str = Field(..., description="Name of the function/class/method")
+    symbol_type: SymbolType = Field(..., description="Type of symbol")
+    file_path: str = Field(..., description="File containing this symbol")
+    line_start: int = Field(..., description="Starting line")
+    line_end: int = Field(..., description="Ending line")
+
+    # Pre-computed understanding
+    summary: str = Field(..., description="What this symbol does (1-2 sentences)")
+    purpose: str = Field("", description="Why this exists / business purpose")
+
+    # Relationships (pre-computed from graph)
+    callers: list[str] = Field(default_factory=list, description="Functions that call this")
+    callees: list[str] = Field(default_factory=list, description="Functions this calls")
+    dependencies: list[str] = Field(default_factory=list, description="Imports/dependencies")
+    dependents: list[str] = Field(default_factory=list, description="What depends on this")
+
+    # Impact analysis (pre-computed)
+    impact_score: float = Field(0.0, description="How critical: 0-1 (1 = changes break many things)")
+    impact_files: list[str] = Field(default_factory=list, description="Files affected if this changes")
+
+    # Metadata
+    signature: str | None = Field(None, description="Function/method signature")
+    return_type: str | None = Field(None, description="Return type if known")
+    parameters: list[str] = Field(default_factory=list, description="Parameter names")
+
+    last_analyzed: datetime = Field(default_factory=datetime.utcnow)
+    content_hash: str = Field(..., description="Hash to detect changes")

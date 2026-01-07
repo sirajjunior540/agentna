@@ -6,6 +6,7 @@ from typing import Callable
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from agentna.analysis.symbol_analyzer import SymbolAnalyzer
 from agentna.core.project import Project
 from agentna.indexing.parsers.base import BaseParser
 from agentna.indexing.parsers.generic_parser import GenericParser, MarkdownParser
@@ -241,7 +242,12 @@ class Indexer:
         self.store.save()
 
 
-def run_sync(project: Project, full: bool = False, quiet: bool = False) -> dict[str, int]:
+def run_sync(
+    project: Project,
+    full: bool = False,
+    quiet: bool = False,
+    analyze: bool = True,
+) -> dict[str, int]:
     """
     Run sync operation with progress display.
 
@@ -249,6 +255,7 @@ def run_sync(project: Project, full: bool = False, quiet: bool = False) -> dict[
         project: The project to sync
         full: Whether to do a full reindex
         quiet: Suppress progress output
+        analyze: Whether to run symbol analysis (generate summaries)
 
     Returns:
         Statistics dictionary
@@ -275,9 +282,78 @@ def run_sync(project: Project, full: bool = False, quiet: bool = False) -> dict[
             else:
                 stats = indexer.incremental_index(progress_callback=callback)
 
+        # Run symbol analysis if enabled
+        if analyze:
+            stats.update(_run_analysis(project, store, full, quiet))
+
         return stats
     else:
         if full:
-            return indexer.full_index()
+            stats = indexer.full_index()
         else:
-            return indexer.incremental_index()
+            stats = indexer.incremental_index()
+
+        if analyze:
+            stats.update(_run_analysis(project, store, full, quiet))
+
+        return stats
+
+
+def _run_analysis(
+    project: Project,
+    store: HybridStore,
+    full: bool,
+    quiet: bool,
+) -> dict[str, int]:
+    """Run symbol analysis to generate pre-computed summaries."""
+    from rich.console import Console
+
+    console = Console()
+
+    if not quiet:
+        console.print("\n[yellow]Analyzing symbols...[/yellow]")
+
+    # Initialize analyzer
+    analyzer = SymbolAnalyzer(
+        graph=store.graph,
+        llm_config=project.config.llm,
+        summaries_path=project.summaries_path,
+    )
+
+    # Get all chunks that need analysis
+    all_chunks = store.embeddings.get_all_chunks()
+
+    if not quiet:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            transient=True,
+        ) as progress:
+            task = progress.add_task("Analyzing...", total=None)
+
+            def callback(name: str, current: int, total: int) -> None:
+                progress.update(
+                    task,
+                    description=f"[magenta]Analyzing ({current}/{total}):[/magenta] {name[:40]}",
+                )
+
+            analysis_stats = analyzer.analyze_chunks(
+                all_chunks,
+                force=full,
+                progress_callback=callback,
+            )
+
+        console.print(
+            f"[green]Analysis complete:[/green] "
+            f"{analysis_stats['analyzed']} analyzed, "
+            f"{analysis_stats['skipped']} cached, "
+            f"{analysis_stats['total_summaries']} total summaries"
+        )
+    else:
+        analysis_stats = analyzer.analyze_chunks(all_chunks, force=full)
+
+    return {
+        "symbols_analyzed": analysis_stats["analyzed"],
+        "symbols_cached": analysis_stats["skipped"],
+        "total_summaries": analysis_stats["total_summaries"],
+    }

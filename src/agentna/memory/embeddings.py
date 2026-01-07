@@ -373,6 +373,44 @@ class EmbeddingStore:
         """Get total number of code chunks."""
         return self._code_collection.count()
 
+    def get_all_chunks(self) -> list[CodeChunk]:
+        """
+        Get all code chunks in the store.
+
+        Returns:
+            List of all code chunks
+        """
+        try:
+            # Get all items from the collection
+            results = self._code_collection.get(
+                include=["documents", "metadatas"],
+            )
+        except Exception as e:
+            raise MemoryError(f"Failed to get all chunks: {e}") from e
+
+        chunks = []
+        if results["ids"]:
+            for i, chunk_id in enumerate(results["ids"]):
+                metadata = results["metadatas"][i] if results["metadatas"] else {}
+                document = results["documents"][i] if results["documents"] else ""
+
+                chunks.append(
+                    CodeChunk(
+                        id=chunk_id,
+                        file_path=metadata.get("file_path", ""),
+                        language=metadata.get("language", ""),
+                        symbol_name=metadata.get("symbol_name") or None,
+                        symbol_type=metadata.get("symbol_type", "file"),
+                        line_start=metadata.get("line_start", 0),
+                        line_end=metadata.get("line_end", 0),
+                        content=document,
+                        content_hash=metadata.get("content_hash", ""),
+                        parent_symbol=metadata.get("parent_symbol") or None,
+                    )
+                )
+
+        return chunks
+
     def count_decisions(self) -> int:
         """Get total number of decisions."""
         return self._decisions_collection.count()

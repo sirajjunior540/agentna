@@ -239,13 +239,10 @@ def ask(
         int,
         typer.Option("--limit", "-l", help="Maximum search results"),
     ] = 10,
-    deep: Annotated[
-        bool,
-        typer.Option("--deep", "-d", help="Deep search - follow relationships for more context"),
-    ] = True,
 ) -> None:
-    """Ask a question about the codebase."""
+    """Ask a question about the codebase using pre-computed memory."""
     try:
+        from agentna.analysis.symbol_analyzer import SymbolAnalyzer
         from agentna.llm import LLMRouter
         from agentna.llm.prompts import SYSTEM_PROMPT, format_ask_codebase
         from agentna.memory.hybrid_store import HybridStore
@@ -261,6 +258,13 @@ def ask(
         # Get store and search for relevant code
         store = HybridStore(project.chroma_dir, project.graph_path)
 
+        # Load pre-computed summaries
+        analyzer = SymbolAnalyzer(
+            graph=store.graph,
+            llm_config=project.config.llm,
+            summaries_path=project.summaries_path,
+        )
+
         # Search with code priority (code > docs)
         results = store.search(question, n_results=limit, include_related=True, code_priority=True)
 
@@ -269,64 +273,54 @@ def ask(
             console.print("Try running [cyan]agent sync[/cyan] to index your codebase.")
             return
 
-        # Build context from search results - include MORE content for better analysis
+        # Build context using PRE-COMPUTED summaries (the memory!)
         context_parts = []
-        symbols = []
-        seen_files = set()
+        symbols_info = []
 
         for result in results:
             chunk = result.chunk
-            # Include more content per chunk (up to 2000 chars)
-            content = chunk.content[:2000] if len(chunk.content) > 2000 else chunk.content
-            context_parts.append(
-                f"### File: {chunk.file_path} (lines {chunk.line_start}-{chunk.line_end})\n"
-                f"Symbol: {chunk.symbol_name or 'N/A'} ({chunk.symbol_type.value})\n"
-                f"```{chunk.language}\n{content}\n```"
-            )
-            if chunk.symbol_name:
-                symbols.append(f"{chunk.symbol_name} ({chunk.symbol_type.value}) - {chunk.file_path}:{chunk.line_start}")
-            seen_files.add(chunk.file_path)
 
-        # Deep search: follow graph relationships to find MORE related code
-        if deep:
-            related_chunks = []
-            for result in results[:5]:  # Follow relationships from top 5 results
-                # Get dependencies and dependents
-                deps = store.graph.get_dependencies(result.chunk.id, max_depth=2)
-                dependents = store.graph.get_dependents(result.chunk.id, max_depth=1)
+            # Get pre-computed summary if available
+            summary = analyzer.get_summary(chunk.id)
 
-                for node_id in deps + dependents:
-                    if len(related_chunks) >= 5:  # Limit additional context
-                        break
-                    node = store.graph.get_node(node_id)
-                    if node and node.file_path and node.file_path not in seen_files:
-                        # Get the chunk content
-                        related_chunk = store.embeddings.get_chunk(node_id)
-                        if related_chunk:
-                            content = related_chunk.content[:1500]
-                            related_chunks.append(
-                                f"### Related: {related_chunk.file_path} (lines {related_chunk.line_start}-{related_chunk.line_end})\n"
-                                f"Symbol: {related_chunk.symbol_name or 'N/A'} ({related_chunk.symbol_type.value})\n"
-                                f"```{related_chunk.language}\n{content}\n```"
-                            )
-                            seen_files.add(node.file_path)
-
-            if related_chunks:
-                context_parts.append("\n## Related Code (via dependencies)")
-                context_parts.extend(related_chunks)
+            if summary:
+                # Use rich pre-computed context
+                context_parts.append(
+                    f"### {summary.symbol_name} ({summary.symbol_type.value})\n"
+                    f"**File:** {summary.file_path}:{summary.line_start}\n"
+                    f"**Summary:** {summary.summary}\n"
+                    f"**Purpose:** {summary.purpose}\n"
+                    f"**Called by:** {', '.join(summary.callers[:5]) or 'None'}\n"
+                    f"**Calls:** {', '.join(summary.callees[:5]) or 'None'}\n"
+                    f"**Impact Score:** {summary.impact_score:.2f} ({len(summary.impact_files)} files affected)\n"
+                    f"```{chunk.language}\n{chunk.content[:1500]}\n```"
+                )
+                symbols_info.append(
+                    f"- **{summary.symbol_name}** ({summary.symbol_type.value}): {summary.summary}"
+                )
+            else:
+                # Fallback to raw chunk
+                context_parts.append(
+                    f"### {chunk.symbol_name or 'Code'} ({chunk.symbol_type.value})\n"
+                    f"**File:** {chunk.file_path}:{chunk.line_start}\n"
+                    f"```{chunk.language}\n{chunk.content[:1500]}\n```"
+                )
+                if chunk.symbol_name:
+                    symbols_info.append(f"- {chunk.symbol_name} ({chunk.symbol_type.value})")
 
         context = "\n\n".join(context_parts)
-        symbols_str = "\n".join(f"- {s}" for s in symbols) if symbols else "No specific symbols"
+        symbols_str = "\n".join(symbols_info) if symbols_info else "No specific symbols"
 
-        # Get relationships - MORE detailed
+        # Get relationships from pre-computed summaries
         relationships = []
         for result in results:
-            rels = store.graph.get_relationships(result.chunk.id)
-            for rel in rels[:5]:
-                rel_str = f"{rel.source_id} --[{rel.relation_type.value}]--> {rel.target_id}"
-                if rel_str not in relationships:
-                    relationships.append(rel_str)
-        relationships_str = "\n".join(relationships[:20]) if relationships else "No relationships found"
+            summary = analyzer.get_summary(result.chunk.id)
+            if summary:
+                for caller in summary.callers[:3]:
+                    relationships.append(f"{caller} --> calls --> {summary.symbol_name}")
+                for callee in summary.callees[:3]:
+                    relationships.append(f"{summary.symbol_name} --> calls --> {callee}")
+        relationships_str = "\n".join(relationships[:15]) if relationships else "No relationships found"
 
         # Try to use LLM for answer
         try:
@@ -335,20 +329,17 @@ def ask(
             if not any(status.values()):
                 console.print("[yellow]No LLM available (Ollama not running or Claude API not configured)[/yellow]")
                 console.print(f"[dim]Status: {status}[/dim]\n")
-                # Fallback to showing results
-                _show_search_results(results)
+                # Fallback: show pre-computed summaries directly
+                _show_summaries(results, analyzer)
             else:
                 prompt = format_ask_codebase(question, context, symbols_str, relationships_str)
-                # Use more tokens for detailed answers
                 answer = router.complete_sync(prompt, system=SYSTEM_PROMPT, max_tokens=2500)
                 console.print("[green]Answer:[/green]\n")
-                # Render as Markdown for proper formatting
                 console.print(Markdown(answer))
                 return
         except Exception as e:
-            # Fallback: just show search results
             console.print(f"[yellow]LLM error: {e}[/yellow]\n")
-            _show_search_results(results)
+            _show_summaries(results, analyzer)
 
     except ProjectNotFoundError:
         console.print(
@@ -359,6 +350,35 @@ def ask(
     except AgentNAError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
+
+
+def _show_summaries(results: list, analyzer) -> None:
+    """Display pre-computed summaries when LLM is unavailable."""
+    console.print("[green]Pre-computed Memory (no LLM needed):[/green]\n")
+
+    for i, result in enumerate(results, 1):
+        chunk = result.chunk
+        summary = analyzer.get_summary(chunk.id)
+
+        if summary:
+            console.print(f"[cyan]{i}. {summary.symbol_name}[/cyan] ({summary.symbol_type.value})")
+            console.print(f"   [dim]File:[/dim] {summary.file_path}:{summary.line_start}")
+            console.print(f"   [green]Summary:[/green] {summary.summary}")
+            if summary.purpose:
+                console.print(f"   [yellow]Purpose:[/yellow] {summary.purpose}")
+            if summary.callers:
+                console.print(f"   [magenta]Called by:[/magenta] {', '.join(summary.callers[:3])}")
+            if summary.callees:
+                console.print(f"   [blue]Calls:[/blue] {', '.join(summary.callees[:3])}")
+            if summary.impact_files:
+                console.print(f"   [red]Impact:[/red] {len(summary.impact_files)} files affected")
+            console.print()
+        else:
+            # Fallback to basic info
+            console.print(f"[cyan]{i}. {chunk.file_path}:{chunk.line_start}[/cyan]")
+            if chunk.symbol_name:
+                console.print(f"   Symbol: {chunk.symbol_name} ({chunk.symbol_type.value})")
+            console.print(f"   [dim](No pre-computed summary - run 'agent sync' to analyze)[/dim]\n")
 
 
 def _show_search_results(results: list) -> None:
