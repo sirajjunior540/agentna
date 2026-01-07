@@ -54,7 +54,9 @@ def generate_chunk_id(file_path: str, line_start: int, line_end: int) -> str:
     return f"{file_path}:{line_start}:{line_end}"
 
 
-def generate_symbol_id(symbol_type: str, file_path: str, name: str) -> str:
+def generate_symbol_id(
+    symbol_type: str, file_path: str, name: str, line_start: int | None = None
+) -> str:
     """
     Generate a unique ID for a code symbol.
 
@@ -62,8 +64,11 @@ def generate_symbol_id(symbol_type: str, file_path: str, name: str) -> str:
         symbol_type: Type of symbol (function, class, etc.)
         file_path: Relative path to the file
         name: Symbol name
+        line_start: Starting line number (for uniqueness with duplicate names)
 
     Returns:
         Unique symbol ID
     """
+    if line_start is not None:
+        return f"{symbol_type}:{file_path}:{name}:{line_start}"
     return f"{symbol_type}:{file_path}:{name}"

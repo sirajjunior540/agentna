@@ -184,7 +184,7 @@ class PythonParser(BaseParser):
             signature += f"({', '.join(bases)})"
 
         return CodeChunk(
-            id=generate_symbol_id("class", str(file_path), node.name),
+            id=generate_symbol_id("class", str(file_path), node.name, line_start),
             file_path=str(file_path),
             language=self.language,
             symbol_name=node.name,
@@ -229,7 +229,7 @@ class PythonParser(BaseParser):
         symbol_full_name = f"{parent}.{node.name}" if parent else node.name
 
         return CodeChunk(
-            id=generate_symbol_id(symbol_type.value, str(file_path), symbol_full_name),
+            id=generate_symbol_id(symbol_type.value, str(file_path), symbol_full_name, line_start),
             file_path=str(file_path),
             language=self.language,
             symbol_name=node.name,
