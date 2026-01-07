@@ -268,12 +268,14 @@ Launch the Terminal User Interface.
 agent tui [--path PATH]
 
 # TUI Keyboard Shortcuts:
-#   q - Quit
-#   d - Switch to Dashboard tab
-#   c - Switch to Chat tab
-#   h - Switch to Changes tab
-#   s - Trigger sync
-#   r - Refresh all panels
+#   Ctrl+Q - Quit
+#   F1     - Switch to Dashboard tab
+#   F2     - Switch to Chat tab
+#   F3     - Switch to Changes tab
+#   Ctrl+S - Trigger sync
+#   Ctrl+R - Refresh all panels
+#   Escape - Unfocus input field
+#   Tab    - Navigate between elements
 ```
 
 ### Global Options
