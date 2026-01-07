@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Any
 
+from agentna.core.constants import CODE_BOOST_FACTOR, CODE_EXTENSIONS, DOC_EXTENSIONS, DOC_PENALTY_FACTOR
 from agentna.memory.embeddings import EmbeddingStore
 from agentna.memory.knowledge_graph import KnowledgeGraph
 from agentna.memory.models import (
@@ -125,6 +126,7 @@ class HybridStore:
         include_related: bool = True,
         file_types: list[str] | None = None,
         query_embedding: list[float] | None = None,
+        code_priority: bool = True,
     ) -> list[SearchResult]:
         """
         Search for relevant code with optional relationship context.
@@ -135,17 +137,28 @@ class HybridStore:
             include_related: Whether to include related chunks
             file_types: Optional filter for languages
             query_embedding: Optional pre-computed query embedding
+            code_priority: Prioritize code files over documentation (default True)
 
         Returns:
             List of search results with relationship context
         """
+        # Get more results initially to allow for re-ranking
+        fetch_count = n_results * 2 if code_priority else n_results
+
         # Get initial results from vector search
         results = self.embeddings.search(
             query=query,
             query_embedding=query_embedding,
-            n_results=n_results,
+            n_results=fetch_count,
             file_types=file_types,
         )
+
+        # Re-rank results: code files first, docs last
+        if code_priority and results:
+            results = self._rerank_by_file_type(results)
+
+        # Trim to requested count
+        results = results[:n_results]
 
         if include_related:
             # Enrich results with related chunks
@@ -157,6 +170,33 @@ class HybridStore:
                 ]
                 result.related_chunks = related_ids[:5]  # Limit related chunks
 
+        return results
+
+    def _rerank_by_file_type(self, results: list[SearchResult]) -> list[SearchResult]:
+        """
+        Re-rank search results to prioritize code over documentation.
+
+        Code is the source of truth. Documentation may be outdated.
+
+        Args:
+            results: Original search results
+
+        Returns:
+            Re-ranked results with code files first
+        """
+        for result in results:
+            file_path = result.chunk.file_path
+            ext = Path(file_path).suffix.lower()
+
+            # Boost code files
+            if ext in CODE_EXTENSIONS:
+                result.score = result.score * CODE_BOOST_FACTOR
+            # Penalize documentation files
+            elif ext in DOC_EXTENSIONS:
+                result.score = result.score * DOC_PENALTY_FACTOR
+
+        # Sort by adjusted score (higher is better)
+        results.sort(key=lambda r: r.score, reverse=True)
         return results
 
     def search_with_context(

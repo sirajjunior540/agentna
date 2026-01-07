@@ -145,3 +145,23 @@ LANGUAGE_EXTENSIONS = {
     ".json": "json",
     ".toml": "toml",
 }
+
+# Code file extensions (source of truth - prioritized in search)
+CODE_EXTENSIONS = {
+    ".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".kt",
+    ".rb", ".php", ".c", ".cpp", ".h", ".hpp", ".cs", ".swift",
+}
+
+# Documentation file extensions (lower priority - may be outdated)
+DOC_EXTENSIONS = {
+    ".md", ".rst", ".txt", ".doc", ".docx", ".pdf",
+}
+
+# Config file extensions
+CONFIG_EXTENSIONS = {
+    ".yaml", ".yml", ".json", ".toml", ".ini", ".cfg", ".conf",
+}
+
+# Default boost factor for code files in search (1.0 = no boost)
+CODE_BOOST_FACTOR = 1.5
+DOC_PENALTY_FACTOR = 0.6
