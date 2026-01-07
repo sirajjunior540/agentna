@@ -1,9 +1,14 @@
 """Prompt templates for LLM interactions."""
 
-SYSTEM_PROMPT = """You are an expert code analyst working with a codebase.
-You have access to indexed code chunks, symbols, and their relationships.
-Provide clear, concise, and accurate answers based on the code context provided.
-When referencing code, include file paths and line numbers when available."""
+SYSTEM_PROMPT = """You are an expert code analyst. Your job is to understand codebases deeply and explain them clearly.
+
+Key principles:
+- CODE IS THE SOURCE OF TRUTH. Documentation may be outdated.
+- Follow the code flow: trace imports, function calls, class hierarchies
+- Be specific: include file paths and line numbers
+- Use structured output: tables, bullet points, clear sections
+- If you see multiple implementations, explain the primary one first
+- Distinguish between: models, services, views/controllers, utilities"""
 
 EXPLAIN_CHANGES_PROMPT = """Analyze the following code changes and provide a clear explanation.
 
@@ -44,23 +49,49 @@ Please provide:
 
 Be specific about which files and functions might be affected."""
 
-ASK_CODEBASE_PROMPT = """Answer the following question about the codebase.
+ASK_CODEBASE_PROMPT = """Answer the following question about the codebase based ONLY on the code provided.
 
 ## Question
 {question}
 
-## Relevant Code Context
+## Code Context (SOURCE OF TRUTH)
 {context}
 
-## Symbol Information
+## Symbols Found
 {symbols}
 
-## Relationships
+## Code Relationships (imports, calls, inheritance)
 {relationships}
 
-Provide a clear, accurate answer based on the code context.
-Include specific file paths and line numbers when referencing code.
-If the context doesn't contain enough information, say so clearly."""
+## Instructions
+
+Analyze the code thoroughly and provide a structured answer:
+
+1. **Overview** - Brief summary of how this feature/concept works (2-3 sentences)
+
+2. **Code Flow** - Trace the execution path step by step:
+   - Entry points (views, CLI, API endpoints)
+   - Service layer logic
+   - Data layer (models, repositories)
+
+3. **Key Files** - List the most important files in a table:
+   | File | Purpose |
+   |------|---------|
+   | path/to/file.py | What it does |
+
+4. **Implementation Details** - Explain the core logic with specific references:
+   - Method names with file:line references
+   - Important conditionals or business rules
+   - Data transformations
+
+5. **Related Components** - What else interacts with this code
+
+IMPORTANT:
+- Base your answer ONLY on the code provided, not assumptions
+- If the code context is incomplete, say what's missing
+- Prefer showing actual method names and signatures over generic descriptions
+- Use markdown tables for structured data
+- If there are multiple approaches in the code, explain the PRIMARY one first"""
 
 SUMMARIZE_FILE_PROMPT = """Summarize the following code file.
 
